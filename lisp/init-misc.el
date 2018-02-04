@@ -21,7 +21,7 @@
 
 ;; {{ ace-link
 (ace-link-setup-default)
-(global-set-key (kbd "M-o") 'ace-link-addr)
+(global-set-key (kbd "M-o") 'ace-link)
 ;; }}
 
 ;; open header file under cursor
@@ -50,7 +50,6 @@
               compilation-scroll-output t
               ediff-split-window-function 'split-window-horizontally
               ediff-window-setup-function 'ediff-setup-windows-plain
-              save-interprogram-paste-before-kill t
               grep-highlight-matches t
               grep-scroll-output t
               indent-tabs-mode nil
@@ -72,39 +71,14 @@
 
 
 ;; {{ find-file-in-project (ffip)
-(defun my-git-show-selected-commit ()
-  "Run 'git show selected-commit' in shell."
-  (let* ((git-cmd "git --no-pager log --date=short --pretty=format:'%h|%ad|%s|%an'")
-         (git-cmd-rlts (split-string (shell-command-to-string git-cmd) "\n" t))
-         (line (ivy-read "git log:" git-cmd-rlts)))
-    (shell-command-to-string (format "git show %s"
-                                     (car (split-string line "|" t))))))
-
-(defun my-git-diff-current-file ()
-  "Run 'git diff version:current-file current-file'."
+(defun my-git-versions ()
   (let* ((git-cmd (concat "git --no-pager log --date=short --pretty=format:'%h|%ad|%s|%an' "
-                          buffer-file-name))
-         (git-root (locate-dominating-file default-directory ".git"))
-         (git-cmd-rlts (nconc (split-string (shell-command-to-string "git branch --no-color --all") "\n" t)
-                              (split-string (shell-command-to-string git-cmd) "\n" t)))
-         (line (ivy-read "git diff same file with version" git-cmd-rlts)))
-    (shell-command-to-string (format "git --no-pager diff %s:%s %s"
-                                     (replace-regexp-in-string "^ *\\*? *" "" (car (split-string line "|" t)))
-                                     (file-relative-name buffer-file-name git-root)
-                                     buffer-file-name))))
+                          buffer-file-name)))
+    (nconc (split-string (shell-command-to-string "git branch --no-color --all") "\n" t)
+           (split-string (shell-command-to-string git-cmd) "\n" t))))
+
 
 (setq ffip-match-path-instead-of-filename t)
-;; I only use git
-(setq ffip-diff-backends '(my-git-show-selected-commit
-                           my-git-diff-current-file
-                           ;; `git log -p' current file
-                           ("git diff" . "cd $(git rev-parse --show-toplevel) && git diff")
-                           ("git diff --cached" . "cd $(git rev-parse --show-toplevel) && git diff --cached")
-                           ("git log -p" . (shell-command-to-string (format "cd $(git rev-parse --show-toplevel) && git --no-pager log --date=short -p '%s'"
-                                                                            (buffer-file-name))))
-                           ("git log -Sstring -p" . (shell-command-to-string (format "cd $(git rev-parse --show-toplevel) && git --no-pager log --date=short -S'%s' -p"
-                                                            (read-string "Git search string:"))))
-                           ("diff from `kill-ring'" . (car kill-ring))))
 
 (defun neotree-project-dir ()
   "Open NeoTree using the git root."
@@ -147,11 +121,6 @@
       (let ((default-directory root-dir))
         (shell-command (concat "gradle " cmd "&"))))
     ))
-;; }}
-
-;; {{ crontab
-;; in shell "EDITOR='emacs -nw' crontab -e" to edit cron job
-(add-to-list 'auto-mode-alist '("crontab.*\\'" . crontab-mode))
 ;; }}
 
 ;; cmake
@@ -247,7 +216,6 @@
   (unless (is-buffer-file-temp)
 
     ;; @see http://xugx2007.blogspot.com.au/2007/06/benjamin-rutts-emacs-c-development-tips.html
-    (setq compilation-window-height 8)
     (setq compilation-finish-functions
           '(compilation-finish-hide-buffer-on-success))
 
@@ -256,7 +224,9 @@
     (setq flyspell-check-doublon nil)
     ;; enable for all programming modes
     ;; http://emacsredux.com/blog/2013/04/21/camelcase-aware-editing/
-    (subword-mode)
+    (unless (derived-mode-p 'js2-mode)
+      (subword-mode 1))
+
     (setq-default electric-pair-inhibit-predicate 'electric-pair-conservative-inhibit)
     (electric-pair-mode 1)
 
@@ -396,11 +366,6 @@ See \"Reusing passwords for several connections\" from INFO.
   (add-hook 'messages-buffer-mode-hook 'messages-buffer-mode-hook-setup))
 ;; }}
 
-;; increase and decrease font size in GUI emacs
-(when (display-graphic-p)
-  (global-set-key (kbd "C-=") 'text-scale-increase)
-  (global-set-key (kbd "C--") 'text-scale-decrease))
-
 ;; vimrc
 (add-to-list 'auto-mode-alist '("\\.?vim\\(rc\\)?$" . vimrc-mode))
 
@@ -510,13 +475,14 @@ See \"Reusing passwords for several connections\" from INFO.
 ;; }}
 
 ;; @see http://www.emacswiki.org/emacs/EasyPG#toc4
-;; besides, use gnupg 1.4.9 instead of 2.0
 (defadvice epg--start (around advice-epg-disable-agent disable)
   "Make epg--start not able to find a gpg-agent"
   (let ((agent (getenv "GPG_AGENT_INFO")))
     (setenv "GPG_AGENT_INFO" nil)
     ad-do-it
     (setenv "GPG_AGENT_INFO" agent)))
+
+(setq epa-pinentry-mode 'loopback)
 
 ;; https://github.com/abo-abo/ace-window
 ;; `M-x ace-window ENTER m` to swap window
@@ -528,12 +494,26 @@ See \"Reusing passwords for several connections\" from INFO.
 (window-numbering-mode 1)
 ;; }}
 
+(ace-pinyin-global-mode +1)
+
 ;; {{ avy, jump between texts, like easymotion in vim
 ;; @see http://emacsredux.com/blog/2015/07/19/ace-jump-mode-is-dead-long-live-avy/ for more tips
 ;; dired
 (eval-after-load "dired"
   '(progn
      (define-key dired-mode-map (kbd ";") 'avy-goto-subword-1)))
+;; }}
+
+;; {{start dictionary lookup
+;; use below commands to create dicitonary
+;; mkdir -p ~/.stardict/dic
+;; # wordnet English => English
+;; curl http://abloz.com/huzheng/stardict-dic/dict.org/stardict-dictd_www.dict.org_wn-2.4.2.tar.bz2 | tar jx -C ~/.stardict/dic
+;; # Langdao Chinese => English
+;; curl http://abloz.com/huzheng/stardict-dic/zh_CN/stardict-langdao-ec-gb-2.4.2.tar.bz2 | tar jx -C ~/.stardict/dic
+;;
+(setq sdcv-dictionary-simple-list '("朗道英汉字典5.0"))
+(setq sdcv-dictionary-complete-list '("WordNet"))
 ;; }}
 
 ;; ANSI-escape coloring in compilation-mode
@@ -689,7 +669,7 @@ If no region is selected. You will be asked to use `kill-ring' or clipboard inst
                       (car kill-ring))
                      ((string= choice "clipboard")
                       (unless (featurep 'simpleclip) (require 'simpleclip))
-                      (simpleclip-get-contents)))))
+                      (my-gclip)))))
           (with-temp-file fb
             (insert txt)))))
       ;; save region A as file A
@@ -848,6 +828,11 @@ If no region is selected. You will be asked to use `kill-ring' or clipboard inst
 
 ;; }}
 
+;; @see https://stackoverflow.com/questions/3417438/closing-all-other-buffers-in-emacs
+(defun kill-all-but-current-buffer ()
+  (interactive)
+    (mapc 'kill-buffer (cdr (buffer-list (current-buffer)))))
+
 (defun minibuffer-inactive-mode-hook-setup ()
   ;; make `try-expand-dabbrev' from `hippie-expand' work in mini-buffer
   ;; @see `he-dabbrev-beg', so we need re-define syntax for '/'
@@ -855,4 +840,88 @@ If no region is selected. You will be asked to use `kill-ring' or clipboard inst
                       (modify-syntax-entry ?/ "." table)
                       table)))
 (add-hook 'minibuffer-inactive-mode-hook 'minibuffer-inactive-mode-hook-setup)
+
+;; {{ dumb-jump
+(setq dumb-jump-selector 'ivy)
+(dumb-jump-mode)
+;; }}
+
+;; {{ vc-msg
+(defun vc-msg-hook-setup (vcs-type commit-info)
+  ;; copy commit id to clipboard
+  (my-pclip (plist-get commit-info :id)))
+(add-hook 'vc-msg-hook 'vc-msg-hook-setup)
+
+(defun vc-msg-show-code-setup ()
+  ;; use `ffip-diff-mode' from package find-file-in-project instead of `diff-mode'
+  (unless (featurep 'find-file-in-project)
+    (require 'find-file-in-project))
+  (ffip-diff-mode))
+
+  (add-hook 'vc-msg-show-code-hook 'vc-msg-show-code-setup)
+;; }}
+
+;; {{ eacl - emacs auto complete line(s)
+(global-set-key (kbd "C-x C-l") 'eacl-complete-line)
+(global-set-key (kbd "C-c ;") 'eacl-complete-statement)
+(global-set-key (kbd "C-c C-]") 'eacl-complete-snippet)
+(global-set-key (kbd "C-c .") 'eacl-complete-tag)
+;; }}
+
+;; {{ wgrep and rgrep, inspired by http://oremacs.com/2015/01/27/my-refactoring-workflow/
+(eval-after-load 'grep
+  '(define-key grep-mode-map
+     (kbd "C-x C-q") 'wgrep-change-to-wgrep-mode))
+(eval-after-load 'wgrep
+  '(define-key grep-mode-map
+     (kbd "C-c C-c") 'wgrep-finish-edit))
+;; }}
+
+;; {{
+(require 'typewriter-mode)
+(defun toggle-typewriter ()
+  "Turn on/off typewriter."
+  (interactive)
+  (if (bound-and-true-p typewriter-mode)
+      (typewriter-mode -1)
+    (typewriter-mode 1)))
+;; }}
+
+;; @see https://github.com/szermatt/emacs-bash-completion
+(bash-completion-setup)
+
+;; {{ eacl and other general grep (rgrep, grep ...) setup
+(eval-after-load 'grep
+  '(progn
+     (dolist (v '("auto"
+                  "target"
+                  "node_modules"
+                  "bower_components"
+                  "*dist"
+                  ".sass_cache"
+                  ".cache"
+                  ".npm"
+                  "elpa"))
+       (add-to-list 'grep-find-ignored-directories v))
+
+     (dolist (v '("*.min.js"
+                  "*.map"
+                  "*.bundle.js"
+                  "*.min.css"
+                  "tags"
+                  "TAGS"
+                  "GTAGS"
+                  "GRTAGS"
+                  "GPATH"
+                  "cscope.files"
+                  "*.json"
+                  "*.log"))
+       (add-to-list 'grep-find-ignored-files v))))
+;; }}
+
+;; {{ https://www.emacswiki.org/emacs/EmacsSession better than "desktop.el"
+(setq session-save-file (expand-file-name "~/.emacs.d/.session"))
+(add-hook 'after-init-hook 'session-initialize)
+;; }}
+
 (provide 'init-misc)
